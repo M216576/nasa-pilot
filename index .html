@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aviator Bot</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #e0f7fa; /* Light blue background */
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #00796b; /* Teal color for the header */
+        }
+        form {
+            margin-bottom: 20px;
+            background-color: #ffffff; /* White background for the form */
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        input[type="number"], input[type="text"], select {
+            padding: 10px;
+            margin: 5px 0;
+            width: 100%;
+            max-width: 300px;
+            border: 1px solid #00796b; /* Teal border */
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #00796b; /* Teal button */
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #004d40; /* Darker teal on hover */
+        }
+        #prediction {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #ffffff; /* White background for prediction results */
+            border: 1px solid #00796b; /* Teal border */
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Aviator Bot Predictor</h1>
+    <form id="predictionForm">
+        <label for="latestCrash">Latest Crash Value:</label>
+        <input type="number" id="latestCrash" name="latestCrash" step="0.01" required>
+        
+        <label for="previousCrashes">Previous Crash Values (comma-separated):</label>
+        <input type="text" id="previousCrashes" name="previousCrashes" placeholder="e.g., 2.5, 3.0, 1.8">
+        
+        <label for="predictionLevel">Prediction Level:</label>
+        <select id="predictionLevel" name="predictionLevel">
+            <option value="low">Lower Prediction</option>
+            <option value="medium">Medium Prediction</option>
+            <option value="high">High Prediction</option>
+        </select>
+        
+        <button type="submit">Predict Next Game</button>
+    </form>
+    <div id="prediction"></div>
+    
+    <script>
+        let model;
+        let previousCrashes = [];
+        let highPrediction = null;
+        let lowPrediction = null;
+
+        async function createModel() {
+            model = tf.sequential();
+            model.add(tf.layers.dense({units: 64, activation: 'relu', inputShape: [1]}));
+            model.add(tf.layers.dense({units: 64, activation: 'relu'}));
+            model.add(tf.layers.dense({units: 1})); // Output layer
+            model.compile({loss: 'meanSquaredError', optimizer: tf.train.adam(0.01)});
+        }
+
+        async function trainModel() {
+            const xs = tf.tensor2d(previousCrashes, [previousCrashes.length, 1]);
+            const ys = tf.tensor2d(previousCrashes.map((_, i) => previousCrashes[i] + Math.random()), [previousCrashes.length, 1]);
+            await model.fit(xs, ys, {epochs: 200, batchSize: 10});
+        }
+
+        async function predictCrash(latestCrash, predictionLevel) {
+            if (previousCrashes.length > 0) {
+                await trainModel();
+                const input = tf.tensor2d([latestCrash], [1, 1]);
+                const prediction = model.predict(input);
+                const predictedValue = (await prediction.data())[0].toFixed(2);
+
+                // Calculate high and low predictions based on the selected level
+                let adjustment = 1.5; // Default adjustment
+                if (predictionLevel === "low") {
+                    adjustment = 0.5; // Lower adjustment for low prediction
+                } else if (predictionLevel === "high") {
+                    adjustment = 2.5; // Higher adjustment for high prediction
+                }
+
+                highPrediction = (parseFloat(predictedValue) + adjustment).toFixed(2);
+                lowPrediction = (parseFloat(predictedValue) - adjustment).toFixed(2);
+
+                return `Predicted crash value: ${predictedValue} (High: ${highPrediction}, Low: ${lowPrediction})`;
+            } else {
+                const minCrash = 1.0;
+                const maxCrash = 7.0;
+                const predictedCrash = (Math.random() * (maxCrash - minCrash) + minCrash).toFixed(2);
+                highPrediction = (parseFloat(predictedCrash) + 1.5).toFixed(2);
+                lowPrediction = (parseFloat(predictedCrash) - 1.5).toFixed(2);
+                return `Predicted crash value: ${predictedCrash} (High: ${highPrediction}, Low: ${lowPrediction})`;
+            }
+        }
+
+        document.getElementById('predictionForm').addEventListener('submit', async function(event) {
+            event.preventDefault();
+            const latestCrash = parseFloat(document.getElementById('latestCrash').value);
+            const previousCrashesInput = document.getElementById('previousCrashes').value;
+            const predictionLevel = document.getElementById('predictionLevel').value;
+            previousCrashes = previousCrashesInput.split(',').map(Number).filter(Boolean);
+            
+            const predictionResult = await predictCrash(latestCrash, predictionLevel);
+            document.getElementById('prediction').innerText = predictionResult;
+        });
+
+        createModel(); // Initialize the model
+    </script>
+</body>
+</html>
